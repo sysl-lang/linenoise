@@ -5,7 +5,7 @@ import sysl.text.{cstring, from_cstring}
 // Line editing for a terminal REPL, bound to linenoise.
 //
 // The C sits beside this file and is compiled as part of the library, so **nothing has to be
-// installed to use this package** and there is no `link` directive in this header. That is the whole
+// installed to use this package** and there is no `@link` in this header. That is the whole
 // reason linenoise was chosen over readline and libedit: it is small enough to carry, and a package
 // that carries its own C is a package that builds anywhere sysl does. It also keeps the licence
 // simple -- linenoise is BSD-2, where GNU readline is GPL and would reach every program that linked

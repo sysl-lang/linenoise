@@ -5,8 +5,8 @@ movement, and the key bindings people expect from a prompt.
 
 **Nothing has to be installed to use this.** linenoise is about 2,400 lines of C and this package
 carries them: sysl compiles a library's C as part of the build, so there is no `-l` flag, no
-`pkg-config`, and no build script anywhere in this repository. That is also why there is no `link`
-directive in the binding's header — there is no external library to name.
+`pkg-config`, and no build script anywhere in this repository. That is also why there is no `@link`
+in the binding's header — there is no external library to name.
 
 ```
 linenoise/
