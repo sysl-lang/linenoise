@@ -1,0 +1,20 @@
+// Line editing for a terminal REPL, bound to linenoise.
+//
+// There is no `dependencies` block because dependency resolution is designed and not yet built
+// (docs/design/packages.md sections 3 to 6); this package is consumed today with `build-lib` and
+// `--lib`, the way any sysl library is.
+
+package {
+  name    = "linenoise"
+  version = "0.1.0"
+}
+
+// A terminal is the operating system's, and so is the file the history is saved to. linenoise also
+// needs `posix` outright: it puts the terminal into raw mode with `tcsetattr` and asks its size with
+// `ioctl`, neither of which is C's standard library.
+//
+// Saying so here is what turns "this cannot work on a freestanding target" into one refusal before
+// anything is compiled, rather than a link error naming a symbol.
+requires {
+  posix = true
+}

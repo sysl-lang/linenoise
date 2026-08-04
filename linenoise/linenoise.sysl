@@ -1,0 +1,109 @@
+module linenoise
+
+import sysl.text.{cstring, from_cstring}
+
+// Line editing for a terminal REPL, bound to linenoise.
+//
+// The C sits beside this file and is compiled as part of the library, so **nothing has to be
+// installed to use this package** and there is no `link` directive in this header. That is the whole
+// reason linenoise was chosen over readline and libedit: it is small enough to carry, and a package
+// that carries its own C is a package that builds anywhere sysl does. It also keeps the licence
+// simple -- linenoise is BSD-2, where GNU readline is GPL and would reach every program that linked
+// it.
+//
+// What crosses the boundary is one string in and one string out, which is why this reads shorter
+// than the SQLite binding: there is no handle to keep, no statement to finalize, and no type whose
+// layout has to be hidden. What there *is* instead is an ownership rule, and it is the whole of what
+// this module has to get right -- see `read`.
+
+extern "linenoise" c_linenoise(prompt: *u8) -> *u8
+extern "linenoiseFree" c_free(p: *u8)
+
+extern "linenoiseHistoryAdd" c_history_add(line: *u8) -> int
+extern "linenoiseHistorySetMaxLen" c_history_set_max_len(len: int) -> int
+extern "linenoiseHistorySave" c_history_save(path: *u8) -> int
+extern "linenoiseHistoryLoad" c_history_load(path: *u8) -> int
+
+extern "linenoiseClearScreen" c_clear_screen()
+extern "linenoiseSetMultiLine" c_set_multiline(on: int)
+extern "linenoiseMaskModeEnable" c_mask_enable()
+extern "linenoiseMaskModeDisable" c_mask_disable()
+
+// Read one line, showing `prompt`.
+//
+// `None` is end of input -- the reader pressed Ctrl-D on an empty line, or stdin reached EOF -- and
+// it is the answer a REPL loop ends on. An empty line is `Some("")` and is not the same thing, which
+// is why this is an `Option` rather than a string that might be empty.
+//
+// **The ownership rule is the reason this function exists rather than the `extern` being public.**
+// linenoise returns storage it allocated with `malloc`, and the caller must hand it back with
+// `linenoiseFree`. A sysl `string` cannot own C's heap, so the bytes are copied out with
+// `from_cstring` and the original is freed here, in the one place that can be sure it happens. A
+// public `extern` would make every caller responsible for a rule they would have to read C to learn.
+//
+// Bytes that are not valid UTF-8 are answered as `None` rather than as an error. A line editor
+// reading from a terminal in some other encoding has given the caller nothing they can use, and the
+// distinction a `Result` would draw is one no REPL acts on differently -- it stops either way.
+read(prompt: string) -> Option[string]
+    val p = cstring(prompt)
+    val line = c_linenoise(p.ptr)
+
+    if line == null then
+        None
+    else
+        val text = from_cstring(line)
+
+        // Freed on both paths, and before the decode is inspected: the storage is C's either way, and
+        // an early return between the call and the free is how a binding leaks.
+        c_free(line)
+
+        text match
+            Ok(s)  -> Some(s)
+            Err(_) -> None
+end read
+
+// Add a line to the history the arrow keys walk.
+//
+// Nothing is added automatically: a REPL usually wants to skip blank lines and repeats, and a
+// binding that decided that for the caller would be one they had to work around. `false` means
+// linenoise refused it, which it does for a line identical to the previous one and when the history
+// has no room.
+history_add(line: string) -> bool
+    val p = cstring(line)
+
+    c_history_add(p.ptr) != 0
+end history_add
+
+// How many lines the history keeps. Older lines fall off the end.
+history_set_max_len(len: int) -> bool = c_history_set_max_len(len) != 0
+
+// Write the history to a file, and read one back. `false` is a filesystem that would not cooperate,
+// which a REPL saving to a dotfile in the user's home directory usually wants to ignore rather than
+// report.
+history_save(path: string) -> bool
+    val p = cstring(path)
+
+    c_history_save(p.ptr) != 0
+end history_save
+
+history_load(path: string) -> bool
+    val p = cstring(path)
+
+    c_history_load(p.ptr) != 0
+end history_load
+
+// Clear the terminal, as Ctrl-L does.
+clear_screen() = c_clear_screen()
+
+// Multi-line mode. Off by default, in which case a line longer than the terminal scrolls sideways;
+// on, it wraps and the editor manages the extra rows.
+set_multiline(on: bool) = c_set_multiline(if on then 1 else 0)
+
+// Mask mode hides what is typed, for reading a password. It stays on until it is turned off, so the
+// shape at a call site is on, read, off.
+set_mask_mode(on: bool)
+    if on then
+        c_mask_enable()
+    else
+        c_mask_disable()
+end set_mask_mode
