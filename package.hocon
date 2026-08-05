@@ -6,7 +6,7 @@
 
 package {
   name    = "linenoise"
-  version = "0.1.0"
+  version = "0.2.0"
 }
 
 // A terminal is the operating system's, and so is the file the history is saved to. linenoise also

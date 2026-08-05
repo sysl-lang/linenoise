@@ -1,4 +1,4 @@
-module linenoise
+module sh.sysl.linenoise
 
 import sysl.text.{cstring, from_cstring}
 

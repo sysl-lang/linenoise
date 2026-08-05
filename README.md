@@ -9,12 +9,16 @@ carries them: sysl compiles a library's C as part of the build, so there is no `
 in the binding's header — there is no external library to name.
 
 ```
-linenoise/
+sh/sysl/linenoise/
     linenoise.sysl      the binding
     linenoise.c         vendored from antirez/linenoise
     linenoise.h
 package.hocon           who this package is, and what it needs of the machine
 ```
+
+The module is **`sh.sysl.linenoise`**, and the three directories are that name: a dotted module name
+mirrors its path from the library root. The prefix is the reverse-DNS of `sysl.sh`, so that a package
+claims a name nobody else will mint rather than the top-level word `linenoise`.
 
 ## Using it
 
@@ -26,7 +30,7 @@ sysl run yourprogram.sysl --lib /tmp/linenoise.syslib
 ## Example
 
 ```sysl
-import linenoise.*
+import sh.sysl.linenoise.*
 
 history_set_max_len(100)
 history_load(".repl_history")
