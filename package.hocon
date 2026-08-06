@@ -1,8 +1,19 @@
 // Line editing for a terminal REPL, bound to linenoise.
 //
-// There is no `dependencies` block because dependency resolution is designed and not yet built
-// (docs/design/packages.md sections 3 to 6); this package is consumed today with `build-lib` and
-// `--lib`, the way any sysl library is.
+// There is no `dependencies` block because linenoise depends on nothing but the C library and the
+// POSIX terminal interface named below.
+//
+// This is the block a *consumer* writes to reach this package, and resolution for it is built
+// (`design/packages.md` §§ 3-6): a `sysl build` fetches the coordinate, selects by MVS, checks what
+// arrived against `sysl.sum`, and compiles it as more modules.
+//
+//     dependencies {
+//       linenoise { git = "github.com/sysl-lang/linenoise", version = "0.2.0" }
+//     }
+//
+// The coordinate is identity rather than a URL, so it carries no `https://`, and the version is the
+// tag `v0.2.0` on this repository. `build-lib` and `--lib` still work, but they are no longer the
+// only way in.
 
 package {
   name    = "linenoise"

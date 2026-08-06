@@ -22,6 +22,20 @@ claims a name nobody else will mint rather than the top-level word `linenoise`.
 
 ## Using it
 
+Name it in your project's `package.hocon` and `sysl build` fetches it:
+
+```hocon
+dependencies {
+  linenoise { git = "github.com/sysl-lang/linenoise", version = "0.2.0" }
+}
+```
+
+The coordinate is an identity rather than a URL, so it carries no `https://`, and `version` is the
+tag `v0.2.0` here. Resolution clones it, selects versions by MVS, and records what arrived in
+`sysl.sum`.
+
+Or build it into an artifact and compile against that:
+
 ```
 sysl build-lib . -o /tmp/linenoise.syslib
 sysl run yourprogram.sysl --lib /tmp/linenoise.syslib
