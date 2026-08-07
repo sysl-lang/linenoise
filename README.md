@@ -1,6 +1,6 @@
 # linenoise
 
-Line editing for a terminal REPL in [sysl](https://github.com/edadma/sysl) — history, cursor
+Line editing for a terminal REPL in [sysl](https://github.com/sysl-lang/sysl) — history, cursor
 movement, and the key bindings people expect from a prompt.
 
 **Nothing has to be installed to use this.** linenoise is about 2,400 lines of C and this package
