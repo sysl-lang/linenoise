@@ -80,16 +80,25 @@ history_set_max_len(len: int) -> bool = c_history_set_max_len(len) != 0
 // Write the history to a file, and read one back. `false` is a filesystem that would not cooperate,
 // which a REPL saving to a dotfile in the user's home directory usually wants to ignore rather than
 // report.
+//
+// **These two compare against zero the other way round from their neighbours above, and the
+// difference is linenoise's rather than a slip here.** `linenoiseHistoryAdd` and
+// `linenoiseHistorySetMaxLen` answer 1 for success and 0 for failure; `linenoiseHistorySave` and
+// `linenoiseHistoryLoad` answer 0 for success and -1 for failure, which is the C convention for a
+// call that either worked or did not rather than one that produced something. Four entry points on
+// one page, two conventions, and nothing in the names to say which is which -- so a reader tidying
+// these to match their neighbours would invert both, and a caller would be told a save that never
+// happened had worked.
 history_save(path: string) -> bool
     val p = cstring(path)
 
-    c_history_save(p.ptr) != 0
+    c_history_save(p.ptr) == 0
 end history_save
 
 history_load(path: string) -> bool
     val p = cstring(path)
 
-    c_history_load(p.ptr) != 0
+    c_history_load(p.ptr) == 0
 end history_load
 
 // Clear the terminal, as Ctrl-L does.

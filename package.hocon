@@ -8,16 +8,16 @@
 // arrived against `sysl.sum`, and compiles it as more modules.
 //
 //     dependencies {
-//       linenoise { git = "github.com/sysl-lang/linenoise", version = "0.2.0" }
+//       linenoise { git = "github.com/sysl-lang/linenoise", version = "0.2.1" }
 //     }
 //
 // The coordinate is identity rather than a URL, so it carries no `https://`, and the version is the
-// tag `v0.2.0` on this repository. `build-lib` and `--lib` still work, but they are no longer the
+// tag `v0.2.1` on this repository. `build-lib` and `--lib` still work, but they are no longer the
 // only way in.
 
 package {
   name    = "linenoise"
-  version = "0.2.0"
+  version = "0.2.1"
 }
 
 // A terminal is the operating system's, and so is the file the history is saved to. linenoise also

@@ -26,12 +26,12 @@ Name it in your project's `package.hocon` and `sysl build` fetches it:
 
 ```hocon
 dependencies {
-  linenoise { git = "github.com/sysl-lang/linenoise", version = "0.2.0" }
+  linenoise { git = "github.com/sysl-lang/linenoise", version = "0.2.1" }
 }
 ```
 
 The coordinate is an identity rather than a URL, so it carries no `https://`, and `version` is the
-tag `v0.2.0` here. Resolution clones it, selects versions by MVS, and records what arrived in
+tag `v0.2.1` here. Resolution clones it, selects versions by MVS, and records what arrived in
 `sysl.sum`.
 
 Or build it into an artifact and compile against that:
@@ -74,7 +74,7 @@ what a REPL loop ends on. An empty line is `Some("")` and is deliberately not th
 | `read(prompt) -> Option[string]` | one line, or `None` at end of input |
 | `history_add(line) -> bool` | add to the history the arrow keys walk |
 | `history_set_max_len(len) -> bool` | how many lines the history keeps |
-| `history_save(path)` / `history_load(path)` | persist it between runs |
+| `history_save(path) -> bool` / `history_load(path) -> bool` | persist it between runs; `false` is a filesystem that would not cooperate, and a load of a file that is not there yet |
 | `clear_screen()` | as Ctrl-L does |
 | `set_multiline(on)` | wrap a long line instead of scrolling sideways |
 | `set_mask_mode(on)` | hide what is typed, for a password |
@@ -99,6 +99,26 @@ this binding put together. Everything here is one string in and one string out.
 The **non-blocking API** (`linenoiseEditStart` / `EditFeed` / `EditStop`) is also absent. It exists
 for programs driving their own event loop, and it needs the `linenoiseState` struct laid out rather
 than kept opaque.
+
+## Tests
+
+```
+sysl test .
+```
+
+**The history is what a suite can reach, and it is most of the surface.** Nine cases cover adding and
+its duplicate rule, the maximum length and which end lines fall off, the file format as bytes, both
+failure answers, a load round trip, and an entry with a newline in it.
+
+**`read` is not covered and cannot be.** It puts the terminal into raw mode and asks its size with
+`ioctl`, so a test process — whose stdin is a pipe — sends linenoise down its no-tty path, where it
+reads a line with `fgets` and hands it back unedited. Testing that would test `fgets`, not the
+editing. A real test needs a pseudo-terminal, which means `openpt`, `TIOCSWINSZ` and a `struct
+winsize` — more C, and C in this package is C every consumer compiles.
+
+Multi-line mode, mask mode and `clear_screen` are covered only as far as *linking*: they are `static
+int`s and escape codes with no accessor between them, so the one thing observable is that the symbols
+they name exist.
 
 ## Upstream
 

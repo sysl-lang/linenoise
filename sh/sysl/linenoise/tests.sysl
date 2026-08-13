@@ -1,0 +1,185 @@
+module sh.sysl.linenoise
+@tests
+
+import sysl.fs.{read_text, write_text, remove_file, exists}
+
+// What this binding claims, run by `sysl test .`.
+//
+// ==What a suite with no terminal can reach, and what it cannot==
+//
+// **`read` is not tested here and cannot be.** It puts the terminal into raw mode with `tcsetattr`
+// and asks its size with `ioctl`, so a descriptor that is a pipe -- which is what a test process is
+// given -- sends linenoise down its no-tty path, where it reads a line with `fgets` and hands it back
+// unedited. A test of that path is a test of `fgets`: none of the editing, none of the history
+// walking, and none of the escape decoding that is the reason to bind this library at all. Covering
+// it for real needs a pseudo-terminal, which is `openpt`, `TIOCSWINSZ` and a `struct winsize` --
+// macros and a layout, so more C, and C in this package is C every consumer compiles.
+//
+// **The history is the half that needs no terminal**, and it is four of the module's ten entry
+// points: an array of strings, a file format, and the rules for putting one into the other. It is
+// also where a binding is likeliest to be quietly wrong, because every one of those entry points
+// answers a C `int` and the meaning of that `int` is not the same from one to the next. It was: the
+// first thing these tests found was `history_save` and `history_load` answering `true` for the
+// failures they exist to report, and the reason is written where the two functions are.
+//
+// ==One process per test, so the history starts empty every time==
+//
+// `sysl test` runs each `@test` in its own process, and linenoise's history is a file-static array
+// in C. So no test here has to clear the history first and none of them can see another's entries.
+// That is worth saying because the opposite arrangement -- one process, shared state -- would make
+// every case below depend on the order it ran in, and the cases that count the lines in a saved file
+// would be the first to go.
+
+// Where a test that writes a history file points it. Each case names its own, so two of them could
+// run at once without meeting, and every test that makes a file removes it.
+private scratch(what: string) -> string = "/tmp/sysl-linenoise-test-" + what
+
+// -- The history, as an array ------------------------------------------------------------------
+
+// `false` from `history_add` is the refusal a REPL acts on, so what earns one is worth pinning.
+// linenoise compares against the *previous* entry only, which is what makes a shell's usual
+// "don't record the command I just ran twice" free and leaves "don't record it ever again" to the
+// caller.
+@test
+a_line_is_added_and_only_an_immediate_repeat_is_refused()
+    assert(history_add("first"), "a line goes into an empty history")
+    assert(history_add("second"), "and so does a different one")
+    assert(!history_add("second"), "but not the same line twice in a row")
+    assert(history_add("first"), "a repeat that is not the previous entry is not a repeat")
+end a_line_is_added_and_only_an_immediate_repeat_is_refused
+
+// A history of no lines is not a short history, it is a broken one -- `linenoiseHistoryAdd` answers
+// 0 for every line once the maximum is zero, so a caller who set it there would find nothing
+// recorded and no error to explain it. linenoise refuses the length instead, and this is the one
+// place `history_set_max_len` says anything but `true`.
+@test
+a_history_length_below_one_is_refused()
+    assert(!history_set_max_len(0), "a history that holds nothing is not a length")
+    assert(!history_set_max_len(-1), "and neither is a negative one")
+    assert(history_set_max_len(1), "one is the smallest that is")
+end a_history_length_below_one_is_refused
+
+// The end the lines fall off. `set_max_len` is documented as keeping the latest entries when it
+// shrinks a history that is already longer, and which end is kept is the whole of what a caller
+// cares about -- a history trimmed from the wrong end holds the commands nobody wants again.
+@test
+setting_a_smaller_maximum_keeps_the_newest_entries()
+    val path = scratch("trim")
+
+    assert(history_add("a"), "three entries go in")
+    assert(history_add("b"), "three entries go in")
+    assert(history_add("c"), "three entries go in")
+
+    assert(history_set_max_len(2), "and the history is then asked to hold two")
+    assert(history_save(path), "the history is written")
+    assert_eq(read_text(path).expect("the file can be read back"), "b\nc\n")
+
+    remove_file(path).expect("the test cleaned up after itself")
+end setting_a_smaller_maximum_keeps_the_newest_entries
+
+// -- The history, as a file --------------------------------------------------------------------
+
+// The format, stated as bytes. A REPL saves to a dotfile a person may open, and something else may
+// have written it, so what the file is exactly is part of what this package promises.
+@test
+the_history_file_is_one_entry_per_line_in_the_order_they_were_added()
+    val path = scratch("format")
+
+    assert(history_add("one"), "two entries go in")
+    assert(history_add("two"), "two entries go in")
+
+    assert(history_save(path), "saving answers true")
+    assert_eq(read_text(path).expect("the file can be read back"), "one\ntwo\n")
+
+    remove_file(path).expect("the test cleaned up after itself")
+end the_history_file_is_one_entry_per_line_in_the_order_they_were_added
+
+// **The case the inverted comparison failed, and the reason there is a test here at all.** Nothing
+// else in the module can be wrong in a way that still writes a file and still answers something: a
+// save into a directory that is not there fails at `fopen`, and before this was written the binding
+// reported that as success.
+@test
+saving_where_nothing_can_be_written_answers_false()
+    assert(!history_save("/no/such/directory/sysl-linenoise-test.txt"),
+        "a save into a directory that is not there did not happen")
+end saving_where_nothing_can_be_written_answers_false
+
+// The same defect from the other end, and the one a REPL meets on its first ever run: there is no
+// history file yet, so the load fails, and a caller told it succeeded would go on to display a
+// history it does not have.
+@test
+loading_a_file_that_is_not_there_answers_false()
+    val path = scratch("absent")
+
+    assert(!exists(path), "the scratch file is not there to begin with")
+    assert(!history_load(path), "and loading it is a load that did not happen")
+end loading_a_file_that_is_not_there_answers_false
+
+// The round trip, done in one process by writing the file by hand rather than by saving one.
+//
+// Saving and then loading in the same process would not be a round trip: the load *appends*, so a
+// history of two entries saved and reloaded holds four. Writing the file first is what leaves the
+// history empty at the moment the load happens, which is the state a REPL is actually in when it
+// reads its dotfile at startup.
+@test
+a_history_file_is_loaded_into_the_history_it_came_from()
+    val src = scratch("load-src")
+    val out = scratch("load-out")
+
+    write_text(src, "alpha\nbeta\n").expect("a history file can be written by hand")
+
+    assert(history_load(src), "loading answers true")
+    assert(history_save(out), "and the history it made can be written back out")
+    assert_eq(read_text(out).expect("the file can be read back"), "alpha\nbeta\n")
+
+    remove_file(src).expect("the test cleaned up after itself")
+    remove_file(out).expect("the test cleaned up after itself")
+end a_history_file_is_loaded_into_the_history_it_came_from
+
+// An entry with a newline in it, which a multi-line REPL produces and the file format has no room
+// for. linenoise writes it as a carriage return and turns it back on the way in.
+//
+// **The second save is what proves the conversion back happened**, and it proves it through the
+// duplicate rule rather than by reading an entry out -- nothing in this binding hands one back. The
+// history holds `a\nb`; the load reads `a\rb` from the file and, if it converts, offers `a\nb`,
+// which is identical to the previous entry and so refused. A load that left the CR alone would
+// offer something different, it would be added, and the file below would have two lines.
+@test
+a_newline_inside_an_entry_is_carried_as_a_carriage_return()
+    val out   = scratch("newline-out")
+    val again = scratch("newline-again")
+
+    assert(history_add("a\nb"), "an entry may contain a newline")
+    assert(history_save(out), "the history is written")
+    assert_eq(read_text(out).expect("the file can be read back"), "a\rb\n")
+
+    assert(history_load(out), "and read back in")
+    assert(history_save(again), "the history is written a second time")
+    assert_eq(read_text(again).expect("the second file can be read back"), "a\rb\n")
+
+    remove_file(out).expect("the test cleaned up after itself")
+    remove_file(again).expect("the test cleaned up after itself")
+end a_newline_inside_an_entry_is_carried_as_a_carriage_return
+
+// -- The switches, which have no read-back -------------------------------------------------------
+
+// **This is a link test, and it is the only thing available for these four.** Multi-line and mask
+// mode are `static int`s inside linenoise with no accessor, and `clear_screen` writes escape codes
+// to a terminal that is not there -- so nothing about what any of them *did* can be observed from
+// here.
+//
+// What can be observed is that they are reachable at all. An `extern` naming a C function that does
+// not exist under that spelling is a link error, and a link error only happens for a symbol
+// something calls: the four below are called nowhere else in this suite, so without this case a
+// misspelling in any of them would ship. `clear_screen`'s escapes go to the captured stdout of this
+// process and are read by nobody unless it fails.
+@test
+the_switches_that_answer_nothing_are_bound_to_symbols_that_exist()
+    set_multiline(true)
+    set_multiline(false)
+
+    set_mask_mode(true)
+    set_mask_mode(false)
+
+    clear_screen()
+end the_switches_that_answer_nothing_are_bound_to_symbols_that_exist
