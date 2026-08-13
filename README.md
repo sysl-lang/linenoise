@@ -11,12 +11,28 @@ in the binding's header — there is no external library to name.
 ```
 sh/sysl/linenoise/
     linenoise.sysl      the binding
-    linenoise.c         vendored from antirez/linenoise
-    linenoise.h
+    tests.sysl          9 tests, none of which needs a terminal
+    c/
+        c.sysl          linenoise as C declares it
+        linenoise.c     vendored from antirez/linenoise
+        linenoise.h
 package.hocon           who this package is, and what it needs of the machine
 ```
 
-The module is **`sh.sysl.linenoise`**, and the three directories are that name: a dotted module name
+**Everything that is C lives in `c/`**, module `sh.sysl.linenoise.c`. That is the two-layer shape every
+binding in this organisation uses: the `c` layer has to be *faithful*, because a signature that
+disagrees with the header links perfectly and corrupts the call at run time, and the layer above it has
+to be *pleasant*, which is a different question that would otherwise be answered in the same breath.
+
+**This is the smallest raw layer in the organisation, and it is empty of everything but `extern`s.**
+There is no shim, because every entry point linenoise publishes takes scalars and pointers; no
+`c const`, because the library has no `#define` a caller needs — the two mode switches are separate
+functions rather than flags; and no `impl Drop`, because there is no handle. The only allocation
+linenoise makes is the line it just read, and it is freed before the string is even inspected. So the
+split here buys the one thing it always buys: ten raw C entry points that were part of this package's
+published surface are behind `c.` now.
+
+The module is **`sh.sysl.linenoise`**, and the directories are that name: a dotted module name
 mirrors its path from the library root. The prefix is the reverse-DNS of `sysl.sh`, so that a package
 claims a name nobody else will mint rather than the top-level word `linenoise`.
 
@@ -26,12 +42,12 @@ Name it in your project's `package.hocon` and `sysl build` fetches it:
 
 ```hocon
 dependencies {
-  linenoise { git = "github.com/sysl-lang/linenoise", version = "0.2.1" }
+  linenoise { git = "github.com/sysl-lang/linenoise", version = "0.3.0" }
 }
 ```
 
 The coordinate is an identity rather than a URL, so it carries no `https://`, and `version` is the
-tag `v0.2.1` here. Resolution clones it, selects versions by MVS, and records what arrived in
+tag `v0.3.0` here. Resolution clones it, selects versions by MVS, and records what arrived in
 `sysl.sum`.
 
 Or build it into an artifact and compile against that:

@@ -1,0 +1,55 @@
+// linenoise as C declares it.
+//
+// **Everything that is C lives in this directory** — `linenoise.c`, `linenoise.h` as they come from
+// upstream, and this file of declarations over them. Nothing here is meant to be called by a program:
+// `linenoise` hands back `malloc`'d storage the caller must return, a boolean is an `int` under one of
+// two opposite conventions, and a string is a pointer somebody else owns. The module above this one
+// turns those into `Option`s and `bool`s and is what an application imports.
+//
+// The split keeps two jobs apart. This one has to be **faithful** — a signature that disagrees with
+// the header links perfectly and corrupts the call at run time, and nothing in this arrangement checks
+// one against the other, so each declaration below was read out of `linenoise.h` rather than
+// remembered. The other one has to be **pleasant**, which is a different question and would otherwise
+// be answered in the same breath.
+//
+// **There is no shim here at all, and no `c const`.** Every entry point linenoise publishes takes and
+// returns scalars and pointers, so declaring it is the whole of reaching it; and the library has no
+// `#define` a caller ever needs — the two mode switches are separate functions rather than flags.
+// `15 §7`'s three C-only shapes simply do not arise, which is why this is the smallest raw layer in the
+// organisation.
+//
+// **Nor is there anything for `impl Drop`**, and that is worth stating because a binding to a library
+// that allocates usually owes one. The only allocation linenoise makes is the line it just read, and it
+// has to be freed before the string is even inspected — see `read` above. There is no handle, no
+// session and no editor object, so there is nothing whose lifetime a destructor could be attached to.
+
+module sh.sysl.linenoise.c
+
+// Read one line. **Answers storage `malloc`'d by linenoise**, which the caller must hand back with
+// `free` below, and `null` at end of input.
+extern "linenoise" linenoise(prompt: *u8) -> *u8
+
+// `linenoiseFree`, which is the library's own `free` rather than the C library's — the point of it
+// being published is that a program need not have been linked against the same allocator.
+extern "linenoiseFree" free(p: *u8)
+
+// ## History
+//
+// **These four use two opposite conventions, and it is linenoise's doing rather than a slip.** `add`
+// and `set_max_len` answer 1 for success; `save` and `load` answer 0 for success and -1 for failure.
+// The module above turns both into `bool` and says so where a reader will see it.
+
+extern "linenoiseHistoryAdd" history_add(line: *u8) -> int
+extern "linenoiseHistorySetMaxLen" history_set_max_len(len: int) -> int
+extern "linenoiseHistorySave" history_save(path: *u8) -> int
+extern "linenoiseHistoryLoad" history_load(path: *u8) -> int
+
+// ## The terminal, and the two modes
+
+extern "linenoiseClearScreen" clear_screen()
+extern "linenoiseSetMultiLine" set_multiline(on: int)
+
+// Mask mode hides what is typed, for reading a password. Two functions rather than one taking a flag,
+// which is linenoise's shape.
+extern "linenoiseMaskModeEnable" mask_enable()
+extern "linenoiseMaskModeDisable" mask_disable()

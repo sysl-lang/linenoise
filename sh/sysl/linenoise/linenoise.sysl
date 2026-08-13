@@ -1,11 +1,12 @@
 module sh.sysl.linenoise
 
+import sh.sysl.linenoise.c
 import sysl.text.{cstring, from_cstring}
 
 // Line editing for a terminal REPL, bound to linenoise.
 //
-// The C sits beside this file and is compiled as part of the library, so **nothing has to be
-// installed to use this package** and there is no `@link` in this header. That is the whole
+// The C sits in `c/` beside this file and is compiled as part of the library, so **nothing has to be
+// installed to use this package** and there is no `@link` anywhere here. That is the whole
 // reason linenoise was chosen over readline and libedit: it is small enough to carry, and a package
 // that carries its own C is a package that builds anywhere sysl does. It also keeps the licence
 // simple -- linenoise is BSD-2, where GNU readline is GPL and would reach every program that linked
@@ -15,19 +16,13 @@ import sysl.text.{cstring, from_cstring}
 // than the SQLite binding: there is no handle to keep, no statement to finalize, and no type whose
 // layout has to be hidden. What there *is* instead is an ownership rule, and it is the whole of what
 // this module has to get right -- see `read`.
-
-extern "linenoise" c_linenoise(prompt: *u8) -> *u8
-extern "linenoiseFree" c_free(p: *u8)
-
-extern "linenoiseHistoryAdd" c_history_add(line: *u8) -> int
-extern "linenoiseHistorySetMaxLen" c_history_set_max_len(len: int) -> int
-extern "linenoiseHistorySave" c_history_save(path: *u8) -> int
-extern "linenoiseHistoryLoad" c_history_load(path: *u8) -> int
-
-extern "linenoiseClearScreen" c_clear_screen()
-extern "linenoiseSetMultiLine" c_set_multiline(on: int)
-extern "linenoiseMaskModeEnable" c_mask_enable()
-extern "linenoiseMaskModeDisable" c_mask_disable()
+//
+// **`sh.sysl.linenoise.c` is the smallest raw layer in the organisation, and it has neither a shim nor
+// a `c const` block.** Every entry point linenoise publishes takes scalars and pointers, and the
+// library has no `#define` a caller needs -- the two mode switches are separate functions rather than
+// flags. So the split here buys the one thing the split always buys and nothing more: ten raw C entry
+// points that used to be part of this package's published surface are behind `c.` now, where reaching
+// for one reads as dropping into C on purpose.
 
 // Read one line, showing `prompt`.
 //
@@ -46,7 +41,7 @@ extern "linenoiseMaskModeDisable" c_mask_disable()
 // distinction a `Result` would draw is one no REPL acts on differently -- it stops either way.
 read(prompt: string) -> Option[string]
     val p = cstring(prompt)
-    val line = c_linenoise(p.ptr)
+    val line = c.linenoise(p.ptr)
 
     if line == null then
         None
@@ -55,7 +50,7 @@ read(prompt: string) -> Option[string]
 
         // Freed on both paths, and before the decode is inspected: the storage is C's either way, and
         // an early return between the call and the free is how a binding leaks.
-        c_free(line)
+        c.free(line)
 
         text match
             Ok(s)  -> Some(s)
@@ -71,11 +66,11 @@ end read
 history_add(line: string) -> bool
     val p = cstring(line)
 
-    c_history_add(p.ptr) != 0
+    c.history_add(p.ptr) != 0
 end history_add
 
 // How many lines the history keeps. Older lines fall off the end.
-history_set_max_len(len: int) -> bool = c_history_set_max_len(len) != 0
+history_set_max_len(len: int) -> bool = c.history_set_max_len(len) != 0
 
 // Write the history to a file, and read one back. `false` is a filesystem that would not cooperate,
 // which a REPL saving to a dotfile in the user's home directory usually wants to ignore rather than
@@ -92,27 +87,27 @@ history_set_max_len(len: int) -> bool = c_history_set_max_len(len) != 0
 history_save(path: string) -> bool
     val p = cstring(path)
 
-    c_history_save(p.ptr) == 0
+    c.history_save(p.ptr) == 0
 end history_save
 
 history_load(path: string) -> bool
     val p = cstring(path)
 
-    c_history_load(p.ptr) == 0
+    c.history_load(p.ptr) == 0
 end history_load
 
 // Clear the terminal, as Ctrl-L does.
-clear_screen() = c_clear_screen()
+clear_screen() = c.clear_screen()
 
 // Multi-line mode. Off by default, in which case a line longer than the terminal scrolls sideways;
 // on, it wraps and the editor manages the extra rows.
-set_multiline(on: bool) = c_set_multiline(if on then 1 else 0)
+set_multiline(on: bool) = c.set_multiline(if on then 1 else 0)
 
 // Mask mode hides what is typed, for reading a password. It stays on until it is turned off, so the
 // shape at a call site is on, read, off.
 set_mask_mode(on: bool)
     if on then
-        c_mask_enable()
+        c.mask_enable()
     else
-        c_mask_disable()
+        c.mask_disable()
 end set_mask_mode
